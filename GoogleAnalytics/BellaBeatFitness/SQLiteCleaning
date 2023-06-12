@@ -1,0 +1,354 @@
+/*
+IDEAS
+Daily Breakdown
+Day of the Week Breakdown
+Hours of the Day breakdown*/
+
+--getting day of week in sqlite
+select ActivityDate,
+  case cast (strftime('%w', date((substr(ActivityDate,6,4)||'-0'||substr(ActivityDate,1,1)||'-'||substr(ActivityDate,3,2)))) as integer)
+  when 0 then 'Sunday'
+  when 1 then 'Monday'
+  when 2 then 'Tuesday'
+  when 3 then 'Wednesday'
+  when 4 then 'Thursday'
+  when 5 then 'Friday'
+  else 'Saturday' end as weekday
+  FROM dailyActivity_merged;
+  
+ SELECT *
+ From dailyActivity_merged
+ LIMIT 5;
+
+--Adding day of the week column to all "daily"s
+ALTER TABLE dailyActivity_merged
+ADD Weekday TEXT;
+
+ALTER TABLE dailyCalories_merged
+ADD Weekday TEXT;
+
+ALTER TABLE dailyIntensities_merged
+ADD Weekday TEXT;
+
+ALTER TABLE dailySteps_merged
+ADD Weekday TEXT;
+
+ALTER TABLE sleepDay_merged
+ADD Weekday TEXT;
+
+--Updating all daily tables with weekday
+UPDATE dailyActivity_merged
+SET Weekday = (
+  case cast (strftime('%w', date((substr(ActivityDate,6,4)||'-0'||substr(ActivityDate,1,1)||'-'||substr(ActivityDate,3,2)))) as integer)
+  when 0 then 'Sunday'
+  when 1 then 'Monday'
+  when 2 then 'Tuesday'
+  when 3 then 'Wednesday'
+  when 4 then 'Thursday'
+  when 5 then 'Friday'
+  else 'Saturday' end
+);
+
+UPDATE dailyCalories_merged
+SET Weekday = (
+  case cast (strftime('%w', date((substr(ActivityDay,6,4)||'-0'||substr(ActivityDay,1,1)||'-'||substr(ActivityDay,3,2)))) as integer)
+  when 0 then 'Sunday'
+  when 1 then 'Monday'
+  when 2 then 'Tuesday'
+  when 3 then 'Wednesday'
+  when 4 then 'Thursday'
+  when 5 then 'Friday'
+  else 'Saturday' end
+);
+
+UPDATE dailyIntensities_merged
+SET Weekday = (
+  case cast (strftime('%w', date((substr(ActivityDay,6,4)||'-0'||substr(ActivityDay,1,1)||'-'||substr(ActivityDay,3,2)))) as integer)
+  when 0 then 'Sunday'
+  when 1 then 'Monday'
+  when 2 then 'Tuesday'
+  when 3 then 'Wednesday'
+  when 4 then 'Thursday'
+  when 5 then 'Friday'
+  else 'Saturday' end
+);
+
+UPDATE dailySteps_merged
+SET Weekday = (
+  case cast (strftime('%w', date((substr(ActivityDay,6,4)||'-0'||substr(ActivityDay,1,1)||'-'||substr(ActivityDay,3,2)))) as integer)
+  when 0 then 'Sunday'
+  when 1 then 'Monday'
+  when 2 then 'Tuesday'
+  when 3 then 'Wednesday'
+  when 4 then 'Thursday'
+  when 5 then 'Friday'
+  else 'Saturday' end
+);
+
+UPDATE sleepDay_merged
+SET Weekday = (
+  case cast (strftime('%w', date((substr(SleepDay,6,4)||'-0'||substr(SleepDay,1,1)||'-'||substr(SleepDay,3,2)))) as integer)
+  when 0 then 'Sunday'
+  when 1 then 'Monday'
+  when 2 then 'Tuesday'
+  when 3 then 'Wednesday'
+  when 4 then 'Thursday'
+  when 5 then 'Friday'
+  else 'Saturday' end
+);
+
+--testing new tables
+ SELECT * 
+ From dailyActivity_merged
+ LIMIT 2;
+ 
+ SELECT * 
+ From dailyCalories_merged
+ LIMIT 2;
+ 
+ SELECT * 
+ From dailyIntensities_merged
+ LIMIT 2;
+ 
+ SELECT * 
+ From dailySteps_merged
+ LIMIT 2;
+
+  SELECT * 
+ From sleepDay_merged
+ LIMIT 2;
+ 
+--hourly steps didn't have hours or steps
+ /*Initially tried to fix the original hourly_steps with a join, but it took too long so I made
+ a new table with the fixes*/
+ALTER TABLE minuteStepsNarrow_merged
+ADD ActivityHour TEXT;
+
+UPDATE hourlySteps_merged
+SET ActivityHour =(
+CAST(substr(ActivityMinute,1, instr(ActivityMinute,':')-1)||':00:00 '||substr(ActivityMinute,length(ActivityMinute)+1,-2) as TEXT)
+);
+
+CREATE TABLE hourlySteps_merged_cleaned as 
+Select Id, CAST(sum(steps) AS INTEGER)  AS Steps, ActivityHour
+	FROM minuteStepsNarrow_merged
+	GROUP by Id, ActivityHour;
+	
+Drop TABLE hourlySteps_merged;
+
+ALTER TABLE minuteStepsNarrow_merged
+DROP ActivityHour;
+
+/*Merging HOURLY tables*/
+CREATE TABLE hourlyActivity_merged as
+SELECT
+	c.Id,
+	c.ActivityHour,
+	c.Calories,
+	i.TotalIntensity,
+	i.AverageIntensity,
+	s.Steps
+FROM hourlyCalories_merged c
+JOIN hourlyIntensities_merged i ON i.Id=c.Id and i.ActivityHour=c.ActivityHour
+JOIN hourlySteps_merged_cleaned s on s.Id=c.Id and s.ActivityHour=c.ActivityHour;
+
+-- dropping 12:00:00 AM from Sleepday 
+UPDATE sleepDay_merged
+SET SleepDay =(
+CAST(substr(SleepDay,1,instr(SleepDay,' ')-1) as TEXT)
+);
+
+SELECT * from sleepDay_merged limit 10;
+
+--Merging DAILY Activity with Sleep
+CREATE TABLE dailyAll as
+SELECT
+d.Id,
+d.ActivityDate,
+d.TotalSteps,
+d.TotalDistance,
+d.TrackerDistance,
+d.LoggedActivitiesDistance,
+d.VeryActiveDistance,
+d.ModeratelyActiveDistance,
+d.LightActiveDistance,
+d.SedentaryActiveDistance,
+d.VeryActiveMinutes,
+d.FairlyActiveMinutes,
+d.LightlyActiveMinutes,
+d.SedentaryMinutes,
+d.Calories,
+d.Weekday,
+s.TotalSleepRecords,
+s.TotalMinutesAsleep,
+s.TotalTimeInBed
+FROM dailyActivity_merged d
+JOIN sleepDay_merged s ON s.Id=d.Id AND s.SleepDay=d.ActivityDate;
+
+SELECT Id, SleepDay
+FROM sleepDay_merged
+LIMIT 10;
+
+SELECT Id, ActivityDate
+FROM dailyActivity_merged
+LIMIT 10;
+
+--Merging MINUTE activities
+CREATE TABLE minuteAll as
+SELECT c.Id, c.ActivityMinute, c.Calories, i.Intensity, m.METs, s.Steps
+FROM minuteCaloriesNarrow_merged c
+JOIN minuteIntensitiesNarrow_merged i ON c.Id=i.Id AND c.ActivityMinute=i.ActivityMinute
+JOIN minuteMETsNarrow_merged m ON c.Id=m.Id AND c.ActivityMinute=m.ActivityMinute
+JOIN minuteStepsNarrow_merged s ON c.Id=s.Id AND c.ActivityMinute=s.ActivityMinute;
+
+ --aggregating daily for export
+ CREATE TABLE averageByDay as
+ SELECT 
+ CASE Weekday
+ WHEN 'Sunday' THEN '1'
+ WHEN 'Monday' THEN '2'
+ WHEN 'Tuesday' THEN '3'
+ WHEN 'Wednesday' THEN '4'
+ WHEN 'Thursday' THEN '5'
+ WHEN 'Friday' THEN '6'
+ ELSE '7' end as wdnum,
+ Weekday,
+ avg(TotalSteps),
+ avg(TotalDistance),
+ avg(TrackerDistance),
+ avg(LoggedActivitiesDistance),
+ avg(VeryActiveDistance),
+ avg(ModeratelyActiveDistance),
+ avg(LightActiveDistance),
+ avg(SedentaryActiveDistance),
+ avg(VeryActiveMinutes),
+ avg(FairlyActiveMinutes),
+ avg(LightlyActiveMinutes),
+ avg(SedentaryMinutes),
+ avg(Calories),
+ avg(TotalSleepRecords),
+ avg(TotalMinutesAsleep),
+ avg(TotalTimeInBed)
+ FROM dailyAll
+ GROUP BY Weekday
+ order by wdnum;
+
+ --aggregating hourly for export
+ 
+  --this handles the 12s, couldn't get this working, so I did a nested case statement
+ /*WHEN Substr(activityHour,instr(activityHour,12),2)=12 AND substr(activityHour,instr(activityHour,'0 ')+2,1)='A' THEN 0
+ WHEN Substr(activityHour,instr(activityHour,12),2)=12 AND substr(activityHour,instr(activityHour,'0 ')+2,1)='P' THEN substr(ActivityHour,instr(activityHour,':'),-2)*/
+ DROP table averageByHour;
+ 
+ CREATE TABLE averageByHour as
+ SELECT substr(ActivityHour,instr(ActivityHour,' ')),
+ CASE
+ WHEN 
+		(CASE 
+			WHEN substr(activityHour,instr(activityHour,'0 ')+2,1)='A' THEN substr(ActivityHour,instr(activityHour,':'),-2)
+			ELSE substr(ActivityHour,instr(activityHour,':'),-2)+12 END)
+		='12' 
+		THEN 0
+WHEN
+		(CASE 
+			WHEN substr(activityHour,instr(activityHour,'0 ')+2,1)='A' THEN substr(ActivityHour,instr(activityHour,':'),-2)
+			ELSE substr(ActivityHour,instr(activityHour,':'),-2)+12 END)
+		=24
+		THEN 12
+ELSE 
+		trim(CASE 
+			WHEN substr(activityHour,instr(activityHour,'0 ')+2,1)='A' THEN substr(ActivityHour,instr(activityHour,':'),-2)
+			ELSE substr(ActivityHour,instr(activityHour,':'),-2)+12 END)
+END AS hour,
+ avg(calories),
+ avg(totalIntensity),
+ avg(AverageIntensity),
+ avg(Steps)
+ FROM hourlyActivity_merged
+ Group by substr(ActivityHour,instr(ActivityHour,' '))
+ ORDER BY substr(ActivityHour,instr(ActivityHour,' '));
+ 
+ --TESTING
+ SELECT * FROM averageByHour;
+ 
+ SELECT substr(ActivityHour,instr(ActivityHour,' ')),
+ CASE 
+		WHEN substr(activityHour,instr(activityHour,'0 ')+2,1)='A' THEN substr(ActivityHour,instr(activityHour,':'),-2)
+		ELSE substr(ActivityHour,instr(activityHour,':'),-2)+12 END
+FROM hourlyActivity_merged
+Group by substr(ActivityHour,instr(ActivityHour,' '));
+ 
+ SELECT substr(ActivityHour,instr(ActivityHour,' ')) as ActivityHour
+ FROM averageByHour
+ LIMIT 5;
+ 
+SELECT Substr(activityHour,instr(activityHour,12),2) from hourlyActivity_merged;
+ 
+ --aggregating MINUTE for export CASE AM PM HOUR*60 + MINUTE
+ DROP TABLE averageByMinute;
+ 
+ CREATE table averageByMinute as
+ SELECT substr(ActivityMinute,instr(ActivityMinute,' ')) as ActivityMinute,
+ (CASE
+ WHEN substr(ActivityMinute,instr(ActivityMinute,'0 ')+2,1)='A' THEN substr(ActivityMinute,instr(ActivityMinute,':'),-2)*60
+ ELSE (substr(ActivityMinute,instr(ActivityMinute,':'),-2)+12)*60 END)
+ + substr(ActivityMinute,instr(ActivityMinute,'0 ')-2,-2) AS minute,
+ avg(calories),
+ avg(Intensity),
+ avg(METs),
+ avg(Steps)
+ FROM minuteAll
+ GROUP BY substr(ActivityMinute,instr(ActivityMinute,' '));
+ 
+ --fixing 12 am and 12 pm for averageByMinute
+ DROP TABLE averageByMinute;
+ 
+ CREATE table averageByMinute as
+ SELECT substr(ActivityMinute,instr(ActivityMinute,' ')) as ActivityMinute,
+ (CASE
+ WHEN 
+		(CASE 
+			WHEN substr(ActivityMinute,instr(ActivityMinute,'0 ')+2,1)='A' THEN substr(ActivityMinute,instr(ActivityMinute,':'),-2)
+			ELSE substr(ActivityMinute,instr(ActivityMinute,':'),-2)+12 END)
+		='12' 
+		THEN 0
+WHEN
+		(CASE 
+			WHEN substr(ActivityMinute,instr(ActivityMinute,'0 ')+2,1)='A' THEN substr(ActivityMinute,instr(ActivityMinute,':'),-2)
+			ELSE substr(ActivityMinute,instr(ActivityMinute,':'),-2)+12 END)
+		=24
+		THEN 12
+ELSE 
+		trim(CASE 
+			WHEN substr(ActivityMinute,instr(ActivityMinute,'0 ')+2,1)='A' THEN substr(ActivityMinute,instr(ActivityMinute,':'),-2)
+			ELSE substr(ActivityMinute,instr(ActivityMinute,':'),-2)+12 END) END)*60
++ substr(ActivityMinute,instr(ActivityMinute,'0 ')-2,-2) AS minute,
+ avg(calories),
+ avg(Intensity),
+ avg(METs),
+ avg(Steps)
+ FROM minuteAll
+ GROUP BY substr(ActivityMinute,instr(ActivityMinute,' '));
+ 
+ SELECT * FROM averageByMinute;
+ 
+ SELECT substr(ActivityMinute,instr(ActivityMinute,'0 ')-2,-2)
+ FROM minuteAll
+ 
+ 
+ 
+ --Looking for insights from weightLogInfo_merged 
+
+ 
+ --need date as a sortable integer
+ CREATE TABLE weightLogInfo_merged_DATENUM AS
+ SELECT *, substr(w2.DATE,instr(w2.DATE,' '),-4)||
+ substr(w2.Date,instr(w2.Date,'/'),-5)||
+ CASE
+ WHEN instr(w2.date,'/2016')=4 then '0'
+ else '' end||substr(w2.Date,instr(w2.date,'/')+1,instr(w2.Date,'/2016')-instr(w2.Date,'/')-1) as datenum
+ FROM weightLogInfo_merged w2;
+ 
+ --IT TURNS OUT ONLY TWO USERS CONSISTENTLY ADDED TO THE weightLogInfo_merged table making it nearly useless
+SELECT count(distinct id)
+FROM weightLogInfo_merged;
