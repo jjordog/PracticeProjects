@@ -1,2 +1,2 @@
 # PracticeProjects
-MY place to store projects I complete to practice coding.
+My place to store projects I complete to practice coding.
